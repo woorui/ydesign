@@ -143,16 +143,16 @@ func (s *Server) Close() error {
 
 type YomoMux struct {
 	mu    sync.Mutex
-	route map[Type]Frame
+	route map[Type]FrameHandler
 }
 
-func NewYomoMux() *YomoMux { return &YomoMux{route: make(map[Type]Frame)} }
+func NewYomoMux() *YomoMux { return &YomoMux{route: make(map[Type]FrameHandler)} }
 
-func (mux *YomoMux) Register(frame Frame) {
+func (mux *YomoMux) Register(frameHandler FrameHandler) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
-	mux.route[frame.Type()] = frame
+	mux.route[frameHandler.Frame().Type()] = frameHandler
 }
 
 func (mux *YomoMux) ServeYomo(ctx context.Context, conn quic.Connection, stream quic.Stream) {

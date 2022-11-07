@@ -93,13 +93,11 @@ func (c *Client) WriteFrame(ctx context.Context, frame Frame) error {
 		}
 	}
 
-	b, err := frame.Encode()
-
+	_, err := c.stream.Write(frame.Encode())
 	if err != nil {
 		c.connected = false
 		go c.reconnect()
 	}
-	c.stream.Write(b)
 
 	return err
 }
