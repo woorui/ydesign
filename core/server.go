@@ -182,11 +182,12 @@ func (mux *YomoMux) ServeYomo(c *Context) {
 
 	mux.mu.Lock()
 	frame, ok := mux.route[Type(0x80|frameType)]
+	mux.mu.Unlock()
+
 	if !ok {
 		// default hander
 		fmt.Println("yomo: framer not found")
 	}
-	mux.mu.Unlock()
 
 	frame.Handle(context.Background(), stream)
 }
