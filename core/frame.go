@@ -1,37 +1,13 @@
 package internal
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/y3"
 )
 
 type Type uint8
-
-type MockFrame struct {
-	buf bytes.Buffer
-}
-
-// FrameType implements Frame
-func (f *MockFrame) FrameType() Type {
-	return 1
-}
-
-// ReadFrom implements Frame
-func (f *MockFrame) ReadFrom(stream io.Reader) (int64, error) {
-	fmt.Println("read")
-	return io.Copy(&f.buf, stream)
-}
-
-// WriteTo implements Frame
-func (f *MockFrame) WriteTo(stream io.Writer) (int64, error) {
-	fmt.Println("write")
-	f.buf.WriteString("wwwwww")
-	return io.Copy(stream, &f.buf)
-}
 
 type RejectedFrame struct {
 	message string
@@ -47,8 +23,9 @@ type Frame interface {
 	// 在 server 端，对于不同的 type，有不同的处理器。
 	Type() Type
 
-	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream
-	Handle(context.Context, io.WriteCloser)
+	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream。
+	// 不对外暴露具体的 Frame 的类型。
+	Handle(context.Context, quic.Connection, quic.Stream)
 
 	// Encode 解析到 byte 数组
 	Encode() ([]byte, error)
@@ -75,10 +52,6 @@ func (f *RejectedFrame) Encode() []byte {
 
 	return rejected.Encode()
 }
-
-// func (f *RejectedFrame) ReadFrom(stream io.Reader) (int64, error) {}
-
-// func (f *RejectedFrame) WriteTo(stream io.Writer) (int64, error) {}
 
 // Message rejected message
 func (f *RejectedFrame) Message() string {
