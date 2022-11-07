@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -26,11 +27,7 @@ func TestServer(t *testing.T) {
 
 	mux := NewYomoMux()
 
-	frame := &MockFrame{}
-
-	mux.Register(frame)
-
-	server := NewServer(NewYomoMux(), serverTLSConf, nil)
+	server := NewServer(mux, serverTLSConf, nil)
 
 	go func() {
 		server.ListenAndServe(ctx, testAddr)
@@ -40,10 +37,9 @@ func TestServer(t *testing.T) {
 		server.Close()
 	})
 
-	client := NewClient(ctx, testAddr, serverTLSConf, nil)
+	client := NewClient(ctx, testAddr, tlsConf, nil)
 
-	client.WriteFrame(ctx, frame)
-
+	fmt.Println(client)
 }
 
 func generateTLSConfig() *tls.Config {

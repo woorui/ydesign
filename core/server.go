@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"runtime"
@@ -17,14 +16,6 @@ import (
 type Handler interface {
 	ServeYomo(*Context)
 }
-
-type FrameType string
-
-type contextKey struct {
-	name string
-}
-
-func (k *contextKey) String() string { return "yomo context value " + k.name }
 
 type Context struct {
 	streamID int64
@@ -40,7 +31,6 @@ type Listener interface {
 	Versions() []string
 }
 type Server struct {
-	ctx context.Context
 	// TLSConfig provides a TLS configuration for use by server. It must be
 	// set for ListenAndServe and Serve methods.
 	TLSConfig *tls.Config
@@ -165,29 +155,18 @@ func (s *Server) Close() error {
 	return err
 }
 
-type Frame interface {
-	FrameType() FrameType
-	// 解析frame，处理frame，回传返回结果
-	ReadFrom(io.Reader) (int64, error)
-	WriteTo(io.Writer) (int64, error)
-}
-
-func as(stream io.ReadWriter, callback func()) {
-
-}
-
 type YomoMux struct {
 	mu    sync.Mutex
-	route map[FrameType]Frame
+	route map[Type]Frame
 }
 
-func NewYomoMux() *YomoMux { return &YomoMux{route: make(map[FrameType]Frame)} }
+func NewYomoMux() *YomoMux { return &YomoMux{route: make(map[Type]Frame)} }
 
 func (mux *YomoMux) Register(frame Frame) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
-	mux.route[frame.FrameType()] = frame
+	mux.route[frame.Type()] = frame
 }
 
 func (mux *YomoMux) ServeYomo(c *Context) {
@@ -202,12 +181,12 @@ func (mux *YomoMux) ServeYomo(c *Context) {
 	frameType := buf[0]
 
 	mux.mu.Lock()
-	framer, ok := mux.route[FrameType(0x80|frameType)]
+	frame, ok := mux.route[Type(0x80|frameType)]
 	if !ok {
 		// default hander
 		fmt.Println("yomo: framer not found")
 	}
 	mux.mu.Unlock()
 
-	framer.ReadFrom(stream)
+	frame.Handle(context.Background(), stream)
 }

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 
@@ -15,8 +16,8 @@ type MockFrame struct {
 }
 
 // FrameType implements Frame
-func (f *MockFrame) FrameType() FrameType {
-	return "mock_type"
+func (f *MockFrame) FrameType() Type {
+	return 1
 }
 
 // ReadFrom implements Frame
@@ -34,6 +35,23 @@ func (f *MockFrame) WriteTo(stream io.Writer) (int64, error) {
 
 type RejectedFrame struct {
 	message string
+}
+
+// 需求是 frame 可以注册到多路复用器，多路复用器根据不同的frame，找到相应的处理方式
+// 1. 需要返回 frame 的 type。
+// 2. 在 server 端，对于不同的 type，有不同的处理器。
+// 3. Server 端处理器的职责包括，解析 frame，处理 frame 的对应逻辑，给 stream 返回处理结果。
+// 4. Client 端要求 frame 可以写入 stream。
+type Frame interface {
+	// Type 返回 frame 的 type。
+	// 在 server 端，对于不同的 type，有不同的处理器。
+	Type() Type
+
+	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream
+	Handle(context.Context, io.WriteCloser)
+
+	// Encode 解析到 byte 数组
+	Encode() ([]byte, error)
 }
 
 // NewRejectedFrame creates a new RejectedFrame with a given TagID of user's data
