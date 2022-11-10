@@ -39,7 +39,8 @@ type ServerFrameHandler interface {
 
 	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream。
 	// 不对外暴露具体的 Frame 的类型。
-	Handle(context.Context, quic.Connection, quic.Stream)
+	// 如果 hande 返回了错误，表示是致命错误，需要退出 server。
+	Handle(context.Context, quic.Connection, quic.Stream) error
 }
 
 type ClientFrameHandler interface {

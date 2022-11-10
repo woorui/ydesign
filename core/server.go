@@ -14,7 +14,7 @@ import (
 )
 
 type Handler interface {
-	ServeYomo(context.Context, quic.Connection, quic.Stream)
+	ServeYomo(context.Context, quic.Connection, quic.Stream) error
 }
 
 type Listener interface {
@@ -153,30 +153,32 @@ func NewYomoMux(handler ...ServerFrameHandler) *YomoMux {
 	return &YomoMux{route: make(map[Type]ServerFrameHandler)}
 }
 
-func (mux *YomoMux) ServeYomo(ctx context.Context, conn quic.Connection, stream quic.Stream) {
-	buf, err := y3.ReadPacket(stream)
-	if err != nil {
-		fmt.Printf("yomo: ServeYomo error: %v", err)
-		return
-	}
+func (mux *YomoMux) ServeYomo(ctx context.Context, conn quic.Connection, stream quic.Stream) error {
+	for {
+		select {
+		case <-conn.Context().Done():
+			fmt.Println("yomo: connection closed")
+		case <-stream.Context().Done():
+			fmt.Println("yomo: stream closed")
+		default:
+		}
 
-	frameType := buf[0]
+		buf, err := y3.ReadPacket(stream)
+		if err != nil {
+			return err
+		}
 
-	frame, ok := mux.route[Type(0x80|frameType)]
+		frameType := buf[0]
 
-	if !ok {
-		// default hander
-		fmt.Println("yomo: frame not found")
-	}
+		handler, ok := mux.route[Type(0x80|frameType)]
 
-	frame.Handle(ctx, conn, stream)
+		if !ok {
+			// default hander
+			fmt.Println("yomo: frame not found")
+		}
 
-	// 检查 conn 和 stream 的状态
-	select {
-	case <-conn.Context().Done():
-		fmt.Println("yomo: connection closed")
-	case <-stream.Context().Done():
-		fmt.Println("yomo: stream closed")
-	default:
+		if err = handler.Handle(ctx, conn, stream); err != nil {
+			return err
+		}
 	}
 }
