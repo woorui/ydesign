@@ -28,6 +28,7 @@ type ConnMetadata interface {
 
 type Auth interface{}
 
+// 这里是否只应该索引 connID，quic.Connection 的管理应该交给 server ？
 type Connector interface {
 	// Connector 需要优雅关闭
 	// 在 Connector 关闭期间，新的链接不可以被添加到 Connector 并且所有 api 会被冻结
