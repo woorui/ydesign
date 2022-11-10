@@ -26,13 +26,24 @@ type Frame interface {
 	// 在 server 端，对于不同的 type，有不同的处理器。
 	Type() Type
 
+	// Encode 编码为 frame
 	Encode() []byte
+
+	// Decode 解码为 []byte
 	Decode([]byte) error
 }
 
 // FrameHandler 可以注册到多路复用器，多路复用器根据不同的 frame type，找到相应的处理方式
-type FrameHandler interface {
-	Frame() Frame
+type ServerFrameHandler interface {
+	FrameType() Type
+
+	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream。
+	// 不对外暴露具体的 Frame 的类型。
+	Handle(context.Context, quic.Connection, quic.Stream)
+}
+
+type ClientFrameHandler interface {
+	FrameType() Frame
 
 	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream。
 	// 不对外暴露具体的 Frame 的类型。

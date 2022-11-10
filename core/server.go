@@ -142,17 +142,15 @@ func (s *Server) Close() error {
 }
 
 type YomoMux struct {
-	mu    sync.Mutex
-	route map[Type]FrameHandler
+	route map[Type]ServerFrameHandler
 }
 
-func NewYomoMux() *YomoMux { return &YomoMux{route: make(map[Type]FrameHandler)} }
-
-func (mux *YomoMux) Register(frameHandler FrameHandler) {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-
-	mux.route[frameHandler.Frame().Type()] = frameHandler
+func NewYomoMux(handler ...ServerFrameHandler) *YomoMux {
+	route := make(map[Type]ServerFrameHandler)
+	for _, h := range handler {
+		route[h.FrameType()] = h
+	}
+	return &YomoMux{route: make(map[Type]ServerFrameHandler)}
 }
 
 func (mux *YomoMux) ServeYomo(ctx context.Context, conn quic.Connection, stream quic.Stream) {
@@ -164,9 +162,7 @@ func (mux *YomoMux) ServeYomo(ctx context.Context, conn quic.Connection, stream 
 
 	frameType := buf[0]
 
-	mux.mu.Lock()
 	frame, ok := mux.route[Type(0x80|frameType)]
-	mux.mu.Unlock()
 
 	if !ok {
 		// default hander
