@@ -4,14 +4,9 @@ import (
 	"context"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/y3"
 )
 
 type Type uint8
-
-type RejectedFrame struct {
-	message string
-}
 
 // Frame 只和数据相关，只负责 buf 的编解码
 //
@@ -40,7 +35,7 @@ type ServerFrameHandler interface {
 	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream。
 	// 不对外暴露具体的 Frame 的类型。
 	// 如果 hande 返回了错误，表示是致命错误，需要退出 server。
-	Handle(context.Context, quic.Connection, quic.Stream) error
+	Handle(context.Context, Connector, quic.Connection, quic.Stream) error
 }
 
 type ClientFrameHandler interface {
@@ -49,50 +44,4 @@ type ClientFrameHandler interface {
 	// Handle 负责解析 frame，处理 frame，并且写回返回信息到 stream。
 	// 不对外暴露具体的 Frame 的类型。
 	Handle(context.Context, quic.Connection, quic.Stream)
-}
-
-// NewRejectedFrame creates a new RejectedFrame with a given TagID of user's data
-func NewRejectedFrame(msg string) *RejectedFrame {
-	return &RejectedFrame{message: msg}
-}
-
-const TagOfRejectedMessage Type = 0x02
-
-// Type gets the type of Frame.
-func (f *RejectedFrame) Type() Type { return 1 }
-
-// Encode to Y3 encoded bytes
-func (f *RejectedFrame) Encode() []byte {
-	rejected := y3.NewNodePacketEncoder(byte(f.Type()))
-	// message
-	msgBlock := y3.NewPrimitivePacketEncoder(byte(TagOfRejectedMessage))
-	msgBlock.SetStringValue(f.message)
-
-	rejected.AddPrimitivePacket(msgBlock)
-
-	return rejected.Encode()
-}
-
-// Message rejected message
-func (f *RejectedFrame) Message() string {
-	return f.message
-}
-
-// DecodeToRejectedFrame decodes Y3 encoded bytes to RejectedFrame
-func DecodeToRejectedFrame(buf []byte) (*RejectedFrame, error) {
-	node := y3.NodePacket{}
-	_, err := y3.DecodeToNodePacket(buf, &node)
-	if err != nil {
-		return nil, err
-	}
-	rejected := &RejectedFrame{}
-	// message
-	if msgBlock, ok := node.PrimitivePackets[byte(TagOfRejectedMessage)]; ok {
-		msg, err := msgBlock.ToUTF8String()
-		if err != nil {
-			return nil, err
-		}
-		rejected.message = msg
-	}
-	return rejected, nil
 }

@@ -17,13 +17,6 @@ type Handler interface {
 	ServeYomo(context.Context, quic.Connection, quic.Stream) error
 }
 
-type Listener interface {
-	quic.Listener
-	// Name listerner's name
-	Name() string
-	// Versions
-	Versions() []string
-}
 type Server struct {
 	// TLSConfig provides a TLS configuration for use by server. It must be
 	// set for ListenAndServe and Serve methods.
@@ -142,7 +135,8 @@ func (s *Server) Close() error {
 }
 
 type YomoMux struct {
-	route map[Type]ServerFrameHandler
+	connector Connector
+	route     map[Type]ServerFrameHandler
 }
 
 func NewYomoMux(handler ...ServerFrameHandler) *YomoMux {
@@ -173,11 +167,10 @@ func (mux *YomoMux) ServeYomo(ctx context.Context, conn quic.Connection, stream 
 		handler, ok := mux.route[Type(0x80|frameType)]
 
 		if !ok {
-			// default hander
-			fmt.Println("yomo: frame not found")
+			fmt.Println("yomo: frame not support")
 		}
 
-		if err = handler.Handle(ctx, conn, stream); err != nil {
+		if err = handler.Handle(ctx, mux.connector, conn, stream); err != nil {
 			return err
 		}
 	}
