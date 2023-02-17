@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/y3"
 )
 
 type Handler interface {
@@ -132,46 +131,4 @@ func (s *Server) Close() error {
 	}
 
 	return err
-}
-
-type YomoMux struct {
-	connector Connector
-	route     map[Type]ServerFrameHandler
-}
-
-func NewYomoMux(handler ...ServerFrameHandler) *YomoMux {
-	route := make(map[Type]ServerFrameHandler)
-	for _, h := range handler {
-		route[h.FrameType()] = h
-	}
-	return &YomoMux{route: make(map[Type]ServerFrameHandler)}
-}
-
-func (mux *YomoMux) ServeYomo(ctx context.Context, conn quic.Connection, stream quic.Stream) error {
-	for {
-		select {
-		case <-conn.Context().Done():
-			fmt.Println("yomo: connection closed")
-		case <-stream.Context().Done():
-			fmt.Println("yomo: stream closed")
-		default:
-		}
-
-		buf, err := y3.ReadPacket(stream)
-		if err != nil {
-			return err
-		}
-
-		frameType := buf[0]
-
-		handler, ok := mux.route[Type(0x80|frameType)]
-
-		if !ok {
-			fmt.Println("yomo: frame not support")
-		}
-
-		if err = handler.Handle(ctx, mux.connector, conn, stream); err != nil {
-			return err
-		}
-	}
 }

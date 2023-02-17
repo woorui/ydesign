@@ -9,6 +9,33 @@ import (
 	"github.com/lucas-clemente/quic-go"
 )
 
+const (
+	// ClientTypeNone is connection type "None".
+	ClientTypeNone ClientType = 0xFF
+	// ClientTypeSource is connection type "Source".
+	ClientTypeSource ClientType = 0x5F
+	// ClientTypeUpstreamZipper is connection type "Upstream Zipper".
+	ClientTypeUpstreamZipper ClientType = 0x5E
+	// ClientTypeStreamFunction is connection type "Stream Function".
+	ClientTypeStreamFunction ClientType = 0x5D
+)
+
+// ClientType represents the connection type.
+type ClientType byte
+
+func (c ClientType) String() string {
+	switch c {
+	case ClientTypeSource:
+		return "Source"
+	case ClientTypeUpstreamZipper:
+		return "Upstream Zipper"
+	case ClientTypeStreamFunction:
+		return "Stream Function"
+	default:
+		return "None"
+	}
+}
+
 type Client struct {
 	ctx context.Context
 
@@ -80,24 +107,24 @@ func (c *Client) reconnect() {
 	}
 }
 
-func (c *Client) WriteFrame(ctx context.Context, frame Frame) error {
-	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
+// func (c *Client) WriteFrame(ctx context.Context, frame Frame) error {
+// 	c.cond.L.Lock()
+// 	defer c.cond.L.Unlock()
 
-	for !c.connected {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			c.cond.Wait()
-		}
-	}
+// 	for !c.connected {
+// 		select {
+// 		case <-ctx.Done():
+// 			return ctx.Err()
+// 		default:
+// 			c.cond.Wait()
+// 		}
+// 	}
 
-	_, err := c.stream.Write(frame.Encode())
-	if err != nil {
-		c.connected = false
-		go c.reconnect()
-	}
+// 	_, err := c.stream.Write(frame.Encode())
+// 	if err != nil {
+// 		c.connected = false
+// 		go c.reconnect()
+// 	}
 
-	return err
-}
+// 	return err
+// }
