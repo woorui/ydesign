@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 )
 
 type Handler interface {
