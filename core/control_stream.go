@@ -14,15 +14,38 @@ import (
 type internalServer interface {
 	getQuicConnection() quic.Connection
 	getControlStream() quic.Stream
-	getAuthenticate(frame.HandshakeFrame) bool
+	getAuthenticate(*frame.HandshakeFrame) bool
 	getMedataBuilder() metadata.Builder
 	getRouter() router.Router
 	getConnector() Connector
 }
 
+type ControlStream struct {
+	stream quic.Stream
+}
+
+func NewControlStream(stream quic.Stream) *ControlStream {
+	return &ControlStream{stream}
+}
+
+func (cs *ControlStream) AcceptSignaling(frameReader func(stream quic.Stream) (frame.Tag, []byte)) (Signaling, error) {
+	tag, buf := frameReader(cs.stream)
+
+	switch tag {
+	case frame.HandshakeFrameTag:
+		f, err := frame.DecodeToHandshakeFrame(buf)
+		if err != nil {
+			return nil, err
+		}
+		return SignalingHandshake(f), nil
+	}
+
+	return nil, errors.New("unexpect frame read")
+}
+
 type Signaling func(srv internalServer, c *Context) error
 
-func SignalingHandshake(f frame.HandshakeFrame) Signaling {
+func SignalingHandshake(f *frame.HandshakeFrame) Signaling {
 	return func(srv internalServer, c *Context) error {
 		if ok := srv.getAuthenticate(f); ok {
 			c.Logger.Debug("Authentication succeeded")
@@ -77,7 +100,7 @@ func SignalingConnection(f *frame.ConnectionFrame) Signaling {
 			if route == nil {
 				return errors.New("connection route is nil")
 			}
-			// There should Set api.
+			// There should be Set api.
 			if err := route.Add(connID, name, observeDataTags); err != nil {
 				return err
 			}

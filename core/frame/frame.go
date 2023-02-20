@@ -8,6 +8,10 @@ type HandshakeFrame struct {
 	AuthPayload string
 }
 
+const HandshakeFrameTag Tag = 1
+
+func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) { return &HandshakeFrame{}, nil }
+
 type ConnectionFrame struct {
 	Name            string
 	ClientID        string
@@ -39,3 +43,5 @@ func (f *GoawayFrame) Encode() []byte { return []byte{} }
 func NewHandshakeAckFrame() *HandshakeAckFrame { return &HandshakeAckFrame{} }
 
 func (f *HandshakeAckFrame) Encode() []byte { return []byte{} }
+
+type Type uint8

@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/quic-go/quic-go"
+	"github.com/woorui/ydesign/core/frame"
+	"golang.org/x/exp/slog"
 )
 
 type Handler interface {
@@ -27,9 +29,9 @@ type Server struct {
 
 	Addr        string
 	listener    quic.Listener
-	onShutdown  []func()
 	handler     Handler
 	streamGroup sync.WaitGroup
+	logger      *slog.Logger
 }
 
 // DefaultListenAddr is the default address to listen.
@@ -44,10 +46,6 @@ func NewServer(handler Handler, tlsConfig *tls.Config, quicConfig *quic.Config) 
 }
 
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
-	// TODO: add some info to ctx
-	if addr == "" {
-		addr = DefaultListenAddr
-	}
 	s.Addr = addr
 
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
@@ -64,16 +62,16 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 }
 
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	l, err := quic.Listen(conn, s.TLSConfig, s.QuicConfig)
+	listener, err := quic.Listen(conn, s.TLSConfig, s.QuicConfig)
 	if err != nil {
 		return err
 	}
 
-	s.listener = l
+	s.listener = listener
 
 	for {
 		// TODO: trackConn, make it don't accept if server is closing.
-		conn, err := l.Accept(ctx)
+		conn, err := s.listener.Accept(ctx)
 		if err != nil {
 			return err
 		}
@@ -85,50 +83,40 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 }
 
 func (s *Server) handleConn(ctx context.Context, conn quic.Connection) error {
-	// TODO: check whether the conn is idle, if so, clise it.
+	stream0, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+
+	controlStream := NewControlStream(stream0)
+
+	signal, err := controlStream.AcceptSignaling(func(stream quic.Stream) (frame.Tag, []byte) { return frame.Tag(1), []byte{} })
+	if err != nil {
+		return nil
+	}
+
+	fmt.Println(signal)
+
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			fmt.Println("........")
-			stream, err := conn.AcceptStream(ctx)
-			if err != nil {
-				fmt.Println(err)
-				return err
-			}
-			fmt.Println("streaming...")
-			s.streamGroup.Add(1)
-			go func() {
-				defer func() {
-					if err := recover(); err != nil {
-						const size = 64 << 10
-						buf := make([]byte, size)
-						buf = buf[:runtime.Stack(buf, false)]
-						log.Printf("yomo: panic serving %v: %v\n%s", conn.RemoteAddr(), err, buf)
-					}
-					s.streamGroup.Done()
-				}()
-				fmt.Println("serving...")
-				s.handler.ServeYomo(ctx, conn, stream)
-			}()
+		stream, err := conn.AcceptStream(ctx)
+		if err != nil {
+			fmt.Println(err)
+			return err
 		}
+		fmt.Println("streaming...")
+		s.streamGroup.Add(1)
+		go func() {
+			defer func() {
+				if err := recover(); err != nil {
+					const size = 64 << 10
+					buf := make([]byte, size)
+					buf = buf[:runtime.Stack(buf, false)]
+					log.Printf("yomo: panic serving %v: %v\n%s", conn.RemoteAddr(), err, buf)
+				}
+				s.streamGroup.Done()
+			}()
+			fmt.Println("serving...")
+			s.handler.ServeYomo(ctx, conn, stream)
+		}()
 	}
-}
-
-func (s *Server) Close() error {
-	s.streamGroup.Wait()
-
-	for _, fn := range s.onShutdown {
-		go fn()
-	}
-
-	// TODO: trackConn, close every conn
-
-	var err error
-	if s.listener != nil {
-		err = s.listener.Close()
-	}
-
-	return err
 }
