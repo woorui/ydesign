@@ -28,8 +28,13 @@ func NewControlStream(stream quic.Stream) *ControlStream {
 	return &ControlStream{stream}
 }
 
-func (cs *ControlStream) AcceptSignaling(frameReader func(stream quic.Stream) (frame.Tag, []byte)) (Signaling, error) {
-	tag, buf := frameReader(cs.stream)
+type FrameReadFunc func(stream quic.Stream) (frame.Tag, []byte, error)
+
+func (cs *ControlStream) AcceptSignaling(fn FrameReadFunc) (Signaling, error) {
+	tag, buf, err := fn(cs.stream)
+	if err != nil {
+		return nil, err
+	}
 
 	switch tag {
 	case frame.HandshakeFrameTag:

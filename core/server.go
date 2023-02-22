@@ -90,7 +90,9 @@ func (s *Server) handleConn(ctx context.Context, conn quic.Connection) error {
 
 	controlStream := NewControlStream(stream0)
 
-	signal, err := controlStream.AcceptSignaling(func(stream quic.Stream) (frame.Tag, []byte) { return frame.Tag(1), []byte{} })
+	signal, err := controlStream.AcceptSignaling(func(stream quic.Stream) (frame.Tag, []byte, error) {
+		return frame.Tag(1), []byte{}, nil
+	})
 	if err != nil {
 		return nil
 	}
