@@ -20,17 +20,17 @@ type internalServer interface {
 	getConnector() Connector
 }
 
-type ControlStream struct {
+type ControlStream1 struct {
 	stream quic.Stream
 }
 
-func NewControlStream(stream quic.Stream) *ControlStream {
-	return &ControlStream{stream}
+func NewControlStream(stream quic.Stream) *ControlStream1 {
+	return &ControlStream1{stream}
 }
 
 type FrameReadFunc func(stream quic.Stream) (frame.Tag, []byte, error)
 
-func (cs *ControlStream) AcceptSignaling(fn FrameReadFunc) (Signaling, error) {
+func (cs *ControlStream1) AcceptSignaling(fn FrameReadFunc) (Signaling, error) {
 	tag, buf, err := fn(cs.stream)
 	if err != nil {
 		return nil, err
