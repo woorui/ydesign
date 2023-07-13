@@ -1,130 +1,78 @@
-package core
+package stateful
 
 import (
 	"context"
-	"crypto/tls"
-	"sync"
-	"time"
+	"io"
 
-	"github.com/quic-go/quic-go"
+	"golang.org/x/exp/slog"
 )
 
-const (
-	// ClientTypeNone is connection type "None".
-	ClientTypeNone ClientType = 0xFF
-	// ClientTypeSource is connection type "Source".
-	ClientTypeSource ClientType = 0x5F
-	// ClientTypeUpstreamZipper is connection type "Upstream Zipper".
-	ClientTypeUpstreamZipper ClientType = 0x5E
-	// ClientTypeStreamFunction is connection type "Stream Function".
-	ClientTypeStreamFunction ClientType = 0x5D
-)
-
-// ClientType represents the connection type.
-type ClientType byte
-
-func (c ClientType) String() string {
-	switch c {
-	case ClientTypeSource:
-		return "Source"
-	case ClientTypeUpstreamZipper:
-		return "Upstream Zipper"
-	case ClientTypeStreamFunction:
-		return "Stream Function"
-	default:
-		return "None"
-	}
-}
-
+// Client represents a peer in a network that can open writers and consume other writers,
+// and handle them in an consumer.
 type Client struct {
-	ctx context.Context
-
-	addr string
-	// TLSConfig provides a TLS configuration for use by server. It must be
-	// set for ListenAndServe and Serve methods.
-	TLSConfig *tls.Config
-
-	// QuicConfig provides the parameters for QUIC connection created with
-	// Serve. If nil, it uses reasonable default values.
-	QuicConfig *quic.Config
-
-	cond *sync.Cond
-
-	connected bool
-
-	conn quic.Connection
-
-	stream quic.Stream
+	conn           UniStreamPeerConnection
+	logger         *slog.Logger
+	fillWriterFunc func(string, string, io.Writer) error
+	idGenerator    func() string
 }
 
-func NewClient(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) *Client {
-	client := &Client{
-		ctx:        context.Background(),
-		cond:       sync.NewCond(&sync.Mutex{}),
-		TLSConfig:  tlsConfig,
-		QuicConfig: quicConfig,
+// NewClient returns a new Client from a connection.
+func NewClient(
+	conn UniStreamPeerConnection,
+	logger *slog.Logger,
+	fillWriterFunc func(string, string, io.Writer) error,
+	idGenerator func() string,
+) *Peer {
+	peer := &Peer{
+		conn:           conn,
+		logger:         logger,
+		fillWriterFunc: fillWriterFunc,
+		idGenerator:    idGenerator,
 	}
 
-	client.connect(ctx, addr)
-
-	go client.reconnect()
-
-	return client
+	return peer
 }
 
-func (c *Client) connect(ctx context.Context, addr string) error {
-	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
+// Open opens a writer with the given tag, which other peers can observe.
+// The returned writer can be used to write to the stream associated with the given tag.
+func (p *Peer) Open(tag string) (io.WriteCloser, error) {
+	w, err := p.conn.OpenUniStream()
+	if err != nil {
+		return nil, err
+	}
 
-	conn, err := quic.DialAddrContext(ctx, addr, c.TLSConfig, c.QuicConfig)
+	p.logger.Debug("peer opens a writer", "tag", tag)
+
+	id := p.idGenerator()
+
+	return w, p.fillWriterFunc(id, tag, w)
+}
+
+// Observe observes tagged streams and handles them in an observer.
+// The observer is responsible for handling the tagged streams and writing to a new peer stream.
+func (p *Peer) Observe(tag string, observer Observer) error {
+	// peer request to observe stream in the specified tag.
+	err := p.conn.RequestObserve(tag)
 	if err != nil {
 		return err
 	}
-	c.conn = conn
-
-	stream, err := conn.OpenStreamSync(ctx)
-	if err != nil {
-		return err
-	}
-	c.stream = stream
-
-	c.connected = true
-
-	return nil
+	// then waiting and handling the stream reponsed by server.
+	return p.observing(observer)
 }
 
-func (c *Client) reconnect() {
-	// TODO: add more strategy support
-	maxTimes := 5
-	for n := 0; n < maxTimes; n++ {
-		err := c.connect(c.ctx, c.addr)
+func (p *Peer) observing(observer Observer) error {
+	for {
+		// accept and pure the reader.
+		r, err := p.conn.AcceptUniStream(context.Background())
 		if err != nil {
-			time.Sleep(time.Second)
-			continue
+			return err
 		}
-		c.cond.Broadcast()
-		break
+
+		// dispatch the reader and writer to the observer.
+		go observer.Handle(p, r)
 	}
 }
 
-// func (c *Client) WriteFrame(ctx context.Context, frame Frame) error {
-// 	c.cond.L.Lock()
-// 	defer c.cond.L.Unlock()
-
-// 	for !c.connected {
-// 		select {
-// 		case <-ctx.Done():
-// 			return ctx.Err()
-// 		default:
-// 			c.cond.Wait()
-// 		}
-// 	}
-
-// 	_, err := c.stream.Write(frame.Encode())
-// 	if err != nil {
-// 		c.connected = false
-// 		go c.reconnect()
-// 	}
-
-// 	return err
-// }
+func (p *Peer) Close() error {
+	return p.conn.Close()
+}

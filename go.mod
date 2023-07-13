@@ -1,6 +1,6 @@
 module github.com/woorui/ydesign
 
-go 1.19
+go 1.20
 
 require github.com/quic-go/quic-go v0.32.0
 
