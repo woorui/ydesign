@@ -1,4 +1,4 @@
-package stateful
+package core
 
 import (
 	"context"
@@ -7,30 +7,31 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// Broker accepts streams from Peer and docks them to another Peer.
-type Broker struct {
-	ctx             context.Context
-	ctxCancel       context.CancelFunc
-	readerChan      chan taggedReader
-	readEOFChan     chan string // if read EOF, send to this chan
-	observerChan    chan taggedConnection
-	logger          *slog.Logger
-	drainReaderFunc func(io.Reader) (string, string, error)
+// Server accepts streams and docks them to other streams.
+type Server struct {
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	frw       *FrameReadWriter
+
+	readerChan   chan taggedReader
+	readEOFChan  chan string // if read EOF, send to this chan
+	observerChan chan taggedConnection
+
+	logger *slog.Logger
 }
 
-// NewBroker creates a new broker.
-// The broker accepts streams from Peer and docks them to another Peer.
-func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, string, error), logger *slog.Logger) *Broker {
+// NewServer creates a new server.
+// The server accepts streams from client and docks them to another client.
+func NewServer(ctx context.Context, Listener, frw *FrameReadWriter, logger *slog.Logger) *Server {
 	ctx, ctxCancel := context.WithCancel(ctx)
 
-	broker := &Broker{
-		ctx:             ctx,
-		ctxCancel:       ctxCancel,
-		readerChan:      make(chan taggedReader),
-		readEOFChan:     make(chan string),
-		observerChan:    make(chan taggedConnection),
-		logger:          logger,
-		drainReaderFunc: drainReaderFunc,
+	broker := &Server{
+		ctx:          ctx,
+		ctxCancel:    ctxCancel,
+		readerChan:   make(chan taggedReader),
+		readEOFChan:  make(chan string),
+		observerChan: make(chan taggedConnection),
+		logger:       logger,
 	}
 
 	go broker.run()
@@ -38,23 +39,23 @@ func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, str
 	return broker
 }
 
-// AccepStream continusly accepts uniStreams from conn and retrives the tag from the reader accepted.
-func (b *Broker) AccepStream(conn UniStreamConnection) {
+// handleConn continusly accepts uniStreams from conn and retrives the tag from the reader accepted.
+func (s *Server) handleConn(conn UniStreamConnection) {
 
 	go func() {
 		for {
 			select {
-			case <-b.ctx.Done():
+			case <-s.ctx.Done():
 				return
 			default:
 			}
-			r, err := conn.AcceptUniStream(b.ctx)
+			r, err := conn.AcceptUniStream(s.ctx)
 			if err != nil {
-				b.logger.Debug("failed to accept a uniStream", "error", err)
+				s.logger.Debug("failed to accept a uniStream", "error", err)
 				break
 			}
 
-			id, tag, err := b.drainReaderFunc(r)
+			id, tag, err := s.drainReaderFunc(r)
 
 			if err != nil {
 				b.logger.Debug("ack peer stream failed", "error", err)
@@ -96,7 +97,7 @@ func (b *Broker) run() {
 		// The value is a map where the keys are the id and the value is the reader.
 		// Using a map means that each tag only has one corresponding reader and
 		// new stream cannot cover the old stream in same tag.
-		readers = make(map[string]map[string]io.ReadCloser)
+		readers = make(map[string]map[string]io.Reader)
 	)
 	for {
 		select {
@@ -141,7 +142,7 @@ func (b *Broker) run() {
 					rm[r.id] = r.r
 				} else {
 					// if there donot has an old writer, store it.
-					readers[r.tag] = map[string]io.ReadCloser{
+					readers[r.tag] = map[string]io.Reader{
 						r.id: r.r,
 					}
 				}
@@ -184,6 +185,7 @@ func (b *Broker) copyWithLog(tag string, dst io.Writer, src io.Reader, logger *s
 
 // WriterOpener opens WriteCloser in specified tag.
 type WriterOpener interface {
+	Context() context.Context
 	// Open opens WriteCloser.
 	Open(tag string) (io.WriteCloser, error)
 }
@@ -231,15 +233,4 @@ type taggedReader struct {
 type taggedConnection struct {
 	tag  string
 	conn UniStreamConnection
-}
-
-type Connection interface {
-	// ID returns the ID of the connection.
-	ID() string
-	// OpenUniStream opens uniStream.
-	OpenUniStream() (io.WriteCloser, error)
-	// AcceptUniStream accepts uniStream.
-	AcceptUniStream(context.Context) (io.ReadCloser, error)
-	// Close closes the connection.
-	Close() error
 }
